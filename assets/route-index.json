@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "portals_v": 1,
+  "portals": [
+    {
+      "host": "shepot-api.cc",
+      "group": "lv",
+      "retired": false
+    },
+    {
+      "host": "shepot-api.art",
+      "group": "lv",
+      "retired": false
+    },
+    {
+      "host": "shepot-api.tech",
+      "group": "sof",
+      "retired": false
+    },
+    {
+      "host": "shepot-api.com",
+      "group": "sof",
+      "retired": false
+    },
+    {
+      "host": "shepot-api.name",
+      "group": "buc",
+      "retired": false
+    },
+    {
+      "host": "shepot-api.org",
+      "group": "buc",
+      "retired": false
+    }
+  ],
+  "portals_sig": "MEQCIBkuAxkZdo0Q-V8x7cePiXc6N3mo1PwO0cT5kpI3i4WyAiBn_7IKWEY_F5SzJ4snbPrG0xVEB-iZsvVR-LvRmPFjFw"
+}
