@@ -14,6 +14,7 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+import directory_png
 
 SOURCES = (
     'https://shepotvpn.com/bootstrap/portals.json',
@@ -22,6 +23,7 @@ SOURCES = (
 PUBLIC_KEYS = ["MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEgf8h/HthQ8V6ABa2GVzJKcRsEbcE7rbnZfrJPFKaVBrt4Jh7wwv3khwo2ZcrtXhiKcIbNcprDMK7yvlR8X5Iyg==", "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwwL6jhnj4GKkp/eiukEvLTUFqlxGJCrtg1WYcBH7jIoIHwOpQqjVBPGN2ysP8pUQqMDOZBDum7GdzyxynivS6Q=="]
 MAX_BYTES = 32768
 DIRECTORY = 'assets/route-index.json'
+IMAGE = 'assets/network.png'
 HOST = re.compile(r'^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$')
 
 
@@ -158,9 +160,9 @@ def github_context():
     return 'https://api.github.com/repos/' + repository + '/contents/', branch, token
 
 
-def remote_file(base, name, branch, token):
+def remote_file(base, name, branch, token, limit=131072):
     try:
-        return json.loads(request(base + name + '?ref=' + urllib.parse.quote(branch, safe=''), token=token, limit=131072))
+        return json.loads(request(base + name + '?ref=' + urllib.parse.quote(branch, safe=''), token=token, limit=limit))
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return None
@@ -198,6 +200,34 @@ def record_health(version):
         return False
     data = (json.dumps({'verified_week': week, 'portals_v': version}, indent=2) + '\n').encode()
     write_remote(base, name, branch, token, stored, data, 'Record weekly directory verification')
+    return True
+
+
+def refresh_image(root, document):
+    data = directory_png.encode(json.dumps(document, ensure_ascii=True, separators=(',', ':')).encode())
+    path = root / IMAGE
+    if path.exists() and path.read_bytes() == data:
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as file:
+        temporary = Path(file.name)
+        file.write(data); file.flush(); os.fsync(file.fileno())
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return path
+
+
+def publish_image(path, document):
+    base, branch, token = github_context()
+    stored = remote_file(base, IMAGE, branch, token, limit=directory_png.MAX_IMAGE * 2)
+    if stored:
+        previous = base64.b64decode(stored['content'])
+        compare(decode(directory_png.decode(previous)), document)
+        if previous == path.read_bytes():
+            return False
+    write_remote(base, IMAGE, branch, token, stored, path.read_bytes(), 'Refresh signed image directory')
     return True
 
 
@@ -278,20 +308,29 @@ def main():
     parser.add_argument('--self-test', action='store_true')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--publish', action='store_true')
+    parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        directory_png.self_test()
         return
-    path = Path(__file__).resolve().parents[1] / DIRECTORY
+    root = args.root.resolve()
+    path = root / DIRECTORY
     if args.check:
         d = decode(path.read_bytes())
+        if decode(directory_png.decode((root / IMAGE).read_bytes())) != d:
+            raise ValueError('Image and JSON directories differ')
         print(f"Verified public directory v{d['portals_v']} ({len(d['portals'])} hosts)")
         return
     incoming = latest()
     changed = update(path, incoming)
+    document = decode(path.read_bytes())
+    image = refresh_image(root, document)
     if args.publish:
         print('Comparing the mirrored directory')
         publish(path)
+        print('Publishing the signed image directory')
+        publish_image(image, document)
         print('Recording weekly verification')
         record_health(incoming['portals_v'])
     print(f"{'Updated' if changed else 'Verified'} public directory v{incoming['portals_v']} ({len(incoming['portals'])} hosts)")
