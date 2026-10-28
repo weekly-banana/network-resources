@@ -1,0 +1,37 @@
+name: Refresh signed directory
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - tools/sync_directory.py
+      - .github/workflows/refresh.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-directory
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test validation
+        run: python3 tools/sync_directory.py --self-test
+      - name: Verify committed directory
+        run: python3 tools/sync_directory.py --check
+      - name: Refresh from signed sources
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 tools/sync_directory.py --publish
