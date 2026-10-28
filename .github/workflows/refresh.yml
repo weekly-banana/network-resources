@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - tools/sync_directory.py
+      - tools/directory_png.py
       - .github/workflows/refresh.yml
 
 permissions:
