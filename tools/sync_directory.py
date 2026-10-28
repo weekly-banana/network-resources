@@ -116,11 +116,13 @@ def request(url, *, token=None, body=None, limit=MAX_BYTES):
 
 def latest():
     candidates = []
-    for url in SOURCES:
+    for index, url in enumerate(SOURCES, 1):
         try:
             candidates.append(decode(request(url)))
-        except (OSError, ValueError, subprocess.SubprocessError):
-            pass
+            print(f'Signed source {index}: verified')
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            category = f'HTTP {error.code}' if isinstance(error, urllib.error.HTTPError) else type(error).__name__
+            print(f'Signed source {index}: unavailable ({category})')
     if not candidates:
         raise ValueError('No source returned a trusted directory; previous file preserved')
     best = max(candidates, key=lambda d: d['portals_v'])
@@ -288,7 +290,9 @@ def main():
     incoming = latest()
     changed = update(path, incoming)
     if args.publish:
+        print('Comparing the mirrored directory')
         publish(path)
+        print('Recording weekly verification')
         record_health(incoming['portals_v'])
     print(f"{'Updated' if changed else 'Verified'} public directory v{incoming['portals_v']} ({len(incoming['portals'])} hosts)")
 
@@ -296,5 +300,7 @@ def main():
 if __name__ == '__main__':
     try:
         main()
+    except urllib.error.HTTPError as error:
+        raise SystemExit(f'Directory synchronization failed (HTTP {error.code}); previous public version preserved.') from None
     except (OSError, ValueError, subprocess.SubprocessError):
         raise SystemExit('Directory synchronization failed; previous public version preserved.') from None
