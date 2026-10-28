@@ -231,6 +231,16 @@ def publish_image(path, document):
     return True
 
 
+def verify_committed_pair(document_raw, image_raw, keys=PUBLIC_KEYS):
+    document = decode(document_raw, keys)
+    image = decode(directory_png.decode(image_raw), keys)
+    # Two Contents API commits can be interrupted between JSON and PNG.
+    # Both signatures must be valid; a later run repairs different versions.
+    if image['portals_v'] == document['portals_v']:
+        compare(document, image)
+    return document
+
+
 def self_test():
     import unittest
     class ValidationTests(unittest.TestCase):
@@ -298,6 +308,12 @@ def self_test():
                 self.assertTrue(record_health(2))
                 self.assertEqual(writes[0][1], 'assets/sync-status.json')
                 self.assertEqual(json.loads(writes[0][5]), {'verified_week': week, 'portals_v': 2})
+        def test_interrupted_pair_can_recover_without_accepting_same_version_conflicts(self):
+            current = json.dumps(self.example(2)).encode()
+            older_image = directory_png.encode(json.dumps(self.example(1)).encode())
+            self.assertEqual(verify_committed_pair(current, older_image, self.keys)['portals_v'], 2)
+            conflicting = directory_png.encode(json.dumps(self.example(2, 'other.example')).encode())
+            with self.assertRaises(ValueError): verify_committed_pair(current, conflicting, self.keys)
     result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(ValidationTests))
     if not result.wasSuccessful():
         raise SystemExit(1)
@@ -317,9 +333,7 @@ def main():
     root = args.root.resolve()
     path = root / DIRECTORY
     if args.check:
-        d = decode(path.read_bytes())
-        if decode(directory_png.decode((root / IMAGE).read_bytes())) != d:
-            raise ValueError('Image and JSON directories differ')
+        d = verify_committed_pair(path.read_bytes(), (root / IMAGE).read_bytes())
         print(f"Verified public directory v{d['portals_v']} ({len(d['portals'])} hosts)")
         return
     incoming = latest()
